@@ -1,9 +1,11 @@
+from sqlalchemy.orm import Session
 from fastapi import APIRouter, Path, status, HTTPException, Depends
-from fastapi.security import HTTPBasicCredentials
 
-from users.authentication.hashing import hash_password, check_password
-from users.authentication.basic_auth import basic_auth
-from users.authentication.jwt import create_access_token
+from core.authentication.hashing import hash_password, check_password
+from core.authentication.jwt import create_access_token, get_username
+from core.database.connection import get_db
+
+from users.models import User
 from users.request import UserAuthRequest, UpdateUserRequest
 from users.response import UserResponse, UserTokenResponse
 
@@ -19,13 +21,16 @@ router = APIRouter(prefix="/users", tags=["Users"])
 	status_code=status.HTTP_201_CREATED,
 	response_model=UserResponse,
 )
-def sign_up_user_handler(body: UserAuthRequest):
-	new_user = {
-		"id": len(users) + 1,
-		"username": body.username,
-		"password": hash_password(plain_text=body.password),
-	}
-	users.append(new_user)
+def sign_up_user_handler(
+	body: UserAuthRequest,
+	db: Session = Depends(get_db),
+):
+	new_user = User.create(
+		username=body.username,
+		password=hash_password(plain_text=body.password)
+	)
+	db.add(new_user)
+	db.commit()
 	return UserResponse.build(user=new_user)
 
 
@@ -34,48 +39,48 @@ def sign_up_user_handler(body: UserAuthRequest):
 	status_code=status.HTTP_200_OK,
 	response_model=UserTokenResponse,
 )
-def login_user_handler(body: UserAuthRequest):
-	for user in users:
-		if user["username"] == body.username:
-			if check_password(
-				plain_text=body.password,
-				hashed_password=user["password"],
-			):
-				access_token = create_access_token(username=user["username"])
-				return UserTokenResponse.build(access_token=access_token)
-
-			raise HTTPException(
-				status_code=status.HTTP_401_UNAUTHORIZED,
-				detail="Unauthorized",
-			)
-
-	raise HTTPException(
-		status_code=status.HTTP_404_NOT_FOUND,
-		detail="User not found",
-	)
-
-
-@router.get("/me")
-def get_me_handler(
-	credentials: HTTPBasicCredentials = Depends(basic_auth),
+def login_user_handler(
+	body: UserAuthRequest,
+	db: Session = Depends(get_db),
 ):
-	for user in users:
-		if user["username"] == credentials.username:
-			if check_password(
-				plain_text=credentials.password,
-				hashed_password=user["password"],
-			):
-				return UserResponse.build(user=user)
+	# SELECT * FROM service_user WHERE username = body.username
+	user: User | None = db.query(User).filter(User.username == body.username).first()
 
-			raise HTTPException(
+	if not user:
+		raise HTTPException(
+			status_code=status.HTTP_404_NOT_FOUND,
+			detail="User not found",
+		)
+
+	if not check_password(plain_text=body.password, hashed_password=user.password):
+		raise HTTPException(
 				status_code=status.HTTP_401_UNAUTHORIZED,
 				detail="Unauthorized",
 			)
 
-	raise HTTPException(
-		status_code=status.HTTP_404_NOT_FOUND,
-		detail="User not found",
-	)
+	access_token = create_access_token(username=user.username)
+	return UserTokenResponse.build(access_token=access_token)
+
+
+
+
+
+@router.get(
+	"/me",
+	status_code=status.HTTP_200_OK,
+	response_model=UserResponse,
+)
+def get_me_handler(
+	username: str = Depends(get_username),
+	db: Session = Depends(get_db),
+):
+	user: User | None = db.query(User).filter(User.username == username).first()
+	if not user:
+		raise HTTPException(
+			status_code=status.HTTP_404_NOT_FOUND,
+			detail="User not found",
+		)
+	return UserResponse.build(user=user)
 
 
 @router.get(

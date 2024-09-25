@@ -1,22 +1,19 @@
+from datetime import datetime
 from typing import TypedDict
 
 from pydantic import BaseModel
 
-
-class UserTypedDict(TypedDict):
-    id: int
-    username: str
-    password: str
+from users.models import User
 
 
 class UserResponse(BaseModel):
     id: int
     username: str
-    password: str
+    created_at: datetime
 
     @classmethod
-    def build(cls, user: UserTypedDict):
-        return cls(id=user['id'], username=user['username'], password=user['password'])
+    def build(cls, user: User):
+        return cls(id=user.id, username=user.username, created_at=user.created_at)
 
 
 class UserTokenResponse(BaseModel):

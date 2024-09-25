@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from exception_handlers import attach_exception_handlers
+from core.exception_handlers import attach_exception_handlers
 from users.router import router as user_router
 from products.router import router as product_router
 
