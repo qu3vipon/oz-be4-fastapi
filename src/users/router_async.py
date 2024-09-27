@@ -1,17 +1,19 @@
-from sqlalchemy.orm import Session
-from fastapi import APIRouter, Path, status, HTTPException, Depends, Body
+from sqlalchemy import select
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Path, status, HTTPException, Depends, Body, BackgroundTasks
 
 from core.authentication.hashing import hash_password, check_password
 from core.authentication.jwt import create_access_token, get_username
-from core.database.connection import get_db
+from core.database.connection_async import get_async_db
+from core.email import send_email
 
 from users.models import User
-from users.repository import UserRepository
-from users.request import UserAuthRequest, UpdateUserRequest
+from users.request import UserAuthRequest
 from users.response import UserResponse, UserTokenResponse
 
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(prefix="/async/users", tags=["Async Users"])
 
 
 @router.post(
@@ -19,15 +21,18 @@ router = APIRouter(prefix="/users", tags=["Users"])
 	status_code=status.HTTP_201_CREATED,
 	response_model=UserResponse,
 )
-def sign_up_user_handler(
+async def sign_up_user_handler(
 	body: UserAuthRequest,
-	user_repo: UserRepository = Depends(),
+	background_tasks: BackgroundTasks,
+	db: AsyncSession = Depends(get_async_db),
 ):
 	new_user = User.create(
 		username=body.username,
 		password=hash_password(plain_text=body.password)
 	)
-	user_repo.save(user=new_user)
+	db.add(new_user)
+	await db.commit()
+	background_tasks.add_task(send_email, "회원가입을 축하합니다!")
 	return UserResponse.build(user=new_user)
 
 
@@ -36,12 +41,12 @@ def sign_up_user_handler(
 	status_code=status.HTTP_200_OK,
 	response_model=UserTokenResponse,
 )
-def login_user_handler(
+async def login_user_handler(
 	body: UserAuthRequest,
-	user_repo: UserRepository = Depends(),
+	db: AsyncSession = Depends(get_async_db),
 ):
-	user: User | None = user_repo.get_user_by_username(username=body.username)
-
+	result = await db.execute(select(User).filter(User.username == body.username))
+	user: User | None = result.scalars().first()  # sqlalchemy가 db에서 가져온 정보
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
@@ -63,11 +68,12 @@ def login_user_handler(
 	status_code=status.HTTP_200_OK,
 	response_model=UserResponse,
 )
-def get_me_handler(
+async def get_me_handler(
 	username: str = Depends(get_username),
-	user_repo: UserRepository = Depends(),
+	db: AsyncSession = Depends(get_async_db),
 ):
-	user: User | None = user_repo.get_user_by_username(username=username)
+	result = await db.execute(select(User).filter(User.username == username))
+	user: User | None = result.scalars().first()
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
@@ -81,20 +87,24 @@ def get_me_handler(
 	status_code=status.HTTP_200_OK,
 	response_model=UserResponse,
 )
-def update_me_handler(
+async def update_me_handler(
 	username: str = Depends(get_username),
 	new_password: str = Body(..., embed=True),
-	user_repo: UserRepository = Depends(),
+	db: AsyncSession = Depends(get_async_db),
 ):
-	user: User | None = user_repo.get_user_by_username(username=username)
+	result = await db.execute(select(User).filter(User.username == username))
+	user: User | None = result.scalars().first()
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail="User not found",
 		)
 
-	user.update_password(new_password=hash_password(plain_text=new_password))
-	user_repo.save(user=user)
+	new_password_hash: str = hash_password(plain_text=new_password)
+	user.update_password(new_password=new_password_hash)
+
+	db.add(user)
+	await db.commit()
 	return UserResponse.build(user=user)
 
 
@@ -103,19 +113,20 @@ def update_me_handler(
 	status_code=status.HTTP_204_NO_CONTENT,
 	response_model=None,
 )
-def delete_me_handler(
+async def delete_me_handler(
 	username: str = Depends(get_username),
-	db: Session = Depends(get_db),
+	db: AsyncSession = Depends(get_async_db),
 ):
-	user: User | None = db.query(User).filter(User.username == username).first()
+	result = await db.execute(select(User).filter(User.username == username))
+	user: User | None = result.scalars().first()
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail="User not found",
 		)
 
-	db.delete(user)  # db.add()처럼 세션에서 삭제
-	db.commit()
+	await db.delete(user)
+	await db.commit()
 
 
 @router.get(
@@ -123,12 +134,13 @@ def delete_me_handler(
 	status_code=status.HTTP_200_OK,
 	response_model=UserResponse,
 )
-def get_user_handler(
-	user_id: int = Path(default=..., ge=1), # 조회 대상
-	_: str = Depends(get_username),  # 조회하고 나
-	db: Session = Depends(get_db),
+async def get_user_handler(
+	user_id: int = Path(default=..., ge=1),
+	_: str = Depends(get_username),
+	db: AsyncSession = Depends(get_async_db),
 ):
-	user: User | None = db.query(User).filter(User.id == user_id).first()
+	result = await db.execute(select(User).filter(User.id == user_id))
+	user: User | None = result.scalars().first()
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,

@@ -7,4 +7,4 @@ class UserAuthRequest(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-	username: str
+	password: str

@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from sqlalchemy import Column, Integer, String, DateTime
@@ -15,3 +16,8 @@ class User(Base):
     @classmethod
     def create(cls, username: str, password: str):
         return cls(username=username, password=password)
+
+    def update_password(self, new_password: str):
+        bcrypt_pattern = r'^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$'
+        assert re.match(bcrypt_pattern, new_password) is not None
+        self.password = new_password
