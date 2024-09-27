@@ -9,6 +9,11 @@ from products.router import router as product_router
 app = FastAPI()
 
 
+@app.get("/")
+def root_handler():
+    return {"Hello": "World"}
+
+
 app.include_router(user_router)
 app.include_router(user_async_router)
 app.include_router(product_router)

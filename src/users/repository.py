@@ -16,7 +16,8 @@ class UserRepository:
         return self.db.query(User).filter(User.username == username).first()
 
     def get_user_by_id(self, user_id: int) -> User | None:
-        return
+        return self.db.query(User).filter(User.id == user_id).first()
 
     def delete_user(self, user: User) -> None:
-        return
+        self.db.delete(user)
+        self.db.commit()

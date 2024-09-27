@@ -7,7 +7,7 @@ from core.database.connection import get_db
 
 from users.models import User
 from users.repository import UserRepository
-from users.request import UserAuthRequest, UpdateUserRequest
+from users.request import UserAuthRequest
 from users.response import UserResponse, UserTokenResponse
 
 
@@ -105,17 +105,16 @@ def update_me_handler(
 )
 def delete_me_handler(
 	username: str = Depends(get_username),
-	db: Session = Depends(get_db),
+	user_repo: UserRepository = Depends(),
 ):
-	user: User | None = db.query(User).filter(User.username == username).first()
+	user: User | None = user_repo.get_user_by_username(username=username)
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail="User not found",
 		)
+	user_repo.delete_user(user)
 
-	db.delete(user)  # db.add()처럼 세션에서 삭제
-	db.commit()
 
 
 @router.get(
@@ -124,11 +123,11 @@ def delete_me_handler(
 	response_model=UserResponse,
 )
 def get_user_handler(
-	user_id: int = Path(default=..., ge=1), # 조회 대상
-	_: str = Depends(get_username),  # 조회하고 나
-	db: Session = Depends(get_db),
+	user_id: int = Path(default=..., ge=1),
+	_: str = Depends(get_username),
+	user_repo: UserRepository = Depends(),
 ):
-	user: User | None = db.query(User).filter(User.id == user_id).first()
+	user: User | None = user_repo.get_user_by_id(user_id=user_id)
 	if not user:
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
