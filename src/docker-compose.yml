@@ -1,0 +1,27 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ozcoding-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ozcoding
+      MYSQL_DATABASE: ozcoding
+    ports:
+      - "33060:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7.0
+    container_name: ozcoding-redis
+    restart: always
+    ports:
+      - "63790:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:

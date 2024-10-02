@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, UniqueConstraint, Index
 
 from core.database.orm import Base
 
@@ -12,6 +12,12 @@ class User(Base):
     username = Column(String(16))
     password = Column(String(60))
     created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("username", name="uix_service_user_username"),
+        Index("ix_service_user_created_at", "created_at"),
+    )
+
 
     @staticmethod
     def _validate_hash(password_hash: str) -> None:

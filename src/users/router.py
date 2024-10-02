@@ -1,9 +1,7 @@
-from sqlalchemy.orm import Session
 from fastapi import APIRouter, Path, status, HTTPException, Depends, Body
 
 from core.authentication.hashing import hash_password, check_password
-from core.authentication.jwt import create_access_token, get_username
-from core.database.connection import get_db
+from core.authentication.jwt import JWTService
 
 from users.models import User
 from users.repository import UserRepository
@@ -23,6 +21,12 @@ def sign_up_user_handler(
 	body: UserAuthRequest,
 	user_repo: UserRepository = Depends(),
 ):
+	if not user_repo.validate_username(username=body.username):
+		raise HTTPException(
+			status_code=status.HTTP_409_CONFLICT,
+			detail="Username already exists",
+		)
+
 	new_user = User.create(
 		username=body.username,
 		password=hash_password(plain_text=body.password)
@@ -39,6 +43,7 @@ def sign_up_user_handler(
 def login_user_handler(
 	body: UserAuthRequest,
 	user_repo: UserRepository = Depends(),
+	jwt_service: JWTService = Depends(),
 ):
 	user: User | None = user_repo.get_user_by_username(username=body.username)
 
@@ -54,7 +59,7 @@ def login_user_handler(
 				detail="Unauthorized",
 			)
 
-	access_token = create_access_token(username=user.username)
+	access_token = jwt_service.create_access_token(username=user.username)
 	return UserTokenResponse.build(access_token=access_token)
 
 

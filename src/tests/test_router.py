@@ -1,5 +1,5 @@
 from core.authentication.hashing import check_password, hash_password
-from core.authentication.jwt import _decode_access_token, create_access_token
+from core.authentication.jwt import _decode_access_token, create_access_token, JWTService
 from users.models import User
 
 from schema import Schema
@@ -16,7 +16,7 @@ def test_root(client):
     assert Schema({"Hello": "World"}).validate(response.json())
 
 
-def test_sign_up(client, test_session):
+def test_sign_up_201(client, test_session):
     # given
 
     # when
@@ -38,6 +38,18 @@ def test_sign_up(client, test_session):
     user = test_session.query(User).filter(User.username == "test").first()
     assert user
     assert check_password(plain_text="test-pw", hashed_password=user.password)
+
+def test_sign_up_409(client, test_user):
+    # given
+
+    # when
+    response = client.post(
+        "/users/sign-up",
+        json={"username": test_user.username, "password": "test-pw"},
+    )
+
+    # then
+    assert response.status_code == 409
 
 
 def test_log_in(client, test_session, test_user):

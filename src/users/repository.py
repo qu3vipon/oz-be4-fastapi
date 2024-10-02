@@ -1,3 +1,4 @@
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from core.database.connection import get_db
@@ -17,6 +18,10 @@ class UserRepository:
 
     def get_user_by_id(self, user_id: int) -> User | None:
         return self.db.query(User).filter(User.id == user_id).first()
+
+    def validate_username(self, username: str) -> bool:
+        # Exists=True -> validate=False / Exists=False -> validate=True
+        return not self.db.query(exists().where(User.username == username)).scalar()
 
     def delete_user(self, user: User) -> None:
         self.db.delete(user)
