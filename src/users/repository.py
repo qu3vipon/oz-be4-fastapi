@@ -23,6 +23,9 @@ class UserRepository:
         # Exists=True -> validate=False / Exists=False -> validate=True
         return not self.db.query(exists().where(User.username == username)).scalar()
 
+    def validate_email(self, email: str) -> bool:
+        return not self.db.query(exists().where(User.email == email)).scalar()
+
     def delete_user(self, user: User) -> None:
         self.db.delete(user)
         self.db.commit()

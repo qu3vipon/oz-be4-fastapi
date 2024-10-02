@@ -1,5 +1,8 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from core.cache import redis_client
 from core.exception_handlers import attach_exception_handlers
 from users.router import router as user_router
 from users.router_async import router as user_async_router

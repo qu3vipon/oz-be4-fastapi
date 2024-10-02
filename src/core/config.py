@@ -51,5 +51,4 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=f"core/.env.{SERVER_ENV}")
 
-
 settings = Settings()

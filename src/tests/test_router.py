@@ -1,5 +1,7 @@
 from core.authentication.hashing import check_password, hash_password
-from core.authentication.jwt import _decode_access_token, create_access_token, JWTService
+from core.authentication.jwt import JWTService
+from core.cache import redis_client, OTPService
+
 from users.models import User
 
 from schema import Schema
@@ -31,6 +33,7 @@ def test_sign_up_201(client, test_session):
         {
             "id": int,
             "username": "test",
+            "email": None,
             "created_at": str,
         }
     ).validate(response.json())
@@ -68,12 +71,12 @@ def test_log_in(client, test_session, test_user):
 
     access_token = response.json()["access_token"]
     assert access_token
-    payload = _decode_access_token(access_token=access_token)
+    payload = JWTService().decode_access_token(access_token=access_token)
     assert payload["username"] == "test"
 
 def test_get_me_404(client, test_session):
     # given: 유저가 없을 때
-    access_token = create_access_token(username="test")
+    access_token = JWTService().create_access_token(username="test")
 
     # when
     response = client.get(
@@ -86,7 +89,7 @@ def test_get_me_404(client, test_session):
 
 def test_get_me_200(client, test_session, test_user):
     # given: 유저가 있을 때
-    access_token = create_access_token(username="test")
+    access_token = JWTService().create_access_token(username="test")
 
     # when
     response = client.get(
@@ -100,6 +103,7 @@ def test_get_me_200(client, test_session, test_user):
         {
             "id": int,
             "username": "test",
+            "email": None,
             "created_at": str,
         }
     ).validate(response.json())
@@ -107,7 +111,7 @@ def test_get_me_200(client, test_session, test_user):
 
 def test_update_me(client, test_session, test_user):
     # given
-    access_token = create_access_token(username="test")
+    access_token = JWTService().create_access_token(username="test")
 
     # when
     response = client.patch(
@@ -122,6 +126,7 @@ def test_update_me(client, test_session, test_user):
         {
             "id": int,
             "username": "test",
+            "email": None,
             "created_at": str,
         }
     ).validate(response.json())
@@ -132,7 +137,7 @@ def test_update_me(client, test_session, test_user):
 
 def test_delete_me(client, test_session, test_user):
     # given
-    access_token = create_access_token(username="test")
+    access_token = JWTService().create_access_token(username="test")
 
     # when
     response = client.delete(
@@ -145,6 +150,53 @@ def test_delete_me(client, test_session, test_user):
     assert test_session.query(User).filter(User.username == test_user.username).first() is None
 
 
+
+
+
+def test_create_otp(client, test_user):
+    # given
+    redis_client.delete("test@email.com")
+
+    # when
+    response = client.post(
+        "/users/email/otp",
+        json={"email": "test@email.com"},
+    )
+
+    # then
+    assert response.status_code == 200
+    assert redis_client.get("test@email.com")
+
+
+def test_verify_otp(client, test_session, test_user):
+    # given
+    cached_otp = OTPService().create_otp(email="test@email.com")
+    access_token = JWTService().create_access_token(username=test_user.username)
+
+    # when
+    response = client.post(
+        "/users/email/verify",
+        json={"email": "test@email.com", "otp": cached_otp},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    # then
+    assert response.status_code == 200
+    assert Schema(
+        {
+            "id": int,
+            "username": test_user.username,
+            "email": "test@email.com",
+            "created_at": test_user.created_at.isoformat(),
+        }
+    ).validate(response.json())
+    assert test_session.query(User).filter(
+        User.id == test_user.id,
+        User.email == "test@email.com"
+    ).first()
+
+
+
 def test_get_user(client, test_session, test_user):
     # given
     new_password = hash_password(plain_text="test-pw2")
@@ -152,7 +204,7 @@ def test_get_user(client, test_session, test_user):
     test_session.add(new_user)
     test_session.commit()
 
-    access_token = create_access_token(username=test_user.username)
+    access_token = JWTService().create_access_token(username=test_user.username)
 
     # when
     response = client.get(
@@ -166,6 +218,7 @@ def test_get_user(client, test_session, test_user):
         {
             "id": new_user.id,
             "username": new_user.username,
+            "email": None,
             "created_at": new_user.created_at.isoformat(),
         }
     ).validate(response.json())

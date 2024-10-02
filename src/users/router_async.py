@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Path, status, HTTPException, Depends, Body, BackgroundTasks
 
 from core.authentication.hashing import hash_password, check_password
-from core.authentication.jwt import create_access_token, get_username
+from core.authentication.jwt import JWTService
+from core.authentication.dependency import get_username
 from core.database.connection_async import get_async_db
 from core.email import send_email
 
@@ -44,6 +45,7 @@ async def sign_up_user_handler(
 async def login_user_handler(
 	body: UserAuthRequest,
 	db: AsyncSession = Depends(get_async_db),
+	jwt_service: JWTService = Depends(),
 ):
 	result = await db.execute(select(User).filter(User.username == body.username))
 	user: User | None = result.scalars().first()  # sqlalchemy가 db에서 가져온 정보
@@ -59,7 +61,7 @@ async def login_user_handler(
 				detail="Unauthorized",
 			)
 
-	access_token = create_access_token(username=user.username)
+	access_token = jwt_service.create_access_token(username=user.username)
 	return UserTokenResponse.build(access_token=access_token)
 
 
